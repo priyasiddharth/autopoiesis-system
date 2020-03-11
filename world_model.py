@@ -306,6 +306,39 @@ class Process(object):
     def doStep(self):
         self.logger.error('doStep() not implemented')
 
+    def displaceSubstrate(self, element: T, neighbour: T):
+        # 2.321
+        if neighbour.hasNeighbourOfType(Hole, self.grid):
+            neighbour_hole = self.chooser.chooseOne(neighbour.getNeighboursOfType(Hole, self.grid))
+            self.doSwap(neighbour, neighbour_hole)
+            self.doSwap(element, neighbour_hole)
+        # 2.322
+        elif neighbour.hasNeighbourOfType(Link, self.grid):
+            links = neighbour.getNeighboursOfType(Link, self.grid)
+            # remove 'this'
+            links.remove(element)
+            l = self.chooser.chooseOne([l for l in links if not l.isFree()])
+            h = self.chooser.chooseOne([h for h in l.getNeighboursOfType(Hole, self.grid)])
+            self.doSwap(neighbour, h)
+            self.doSwap(element, h)
+        # 2.323
+        else:
+            self.doSwap(element, neighbour)
+
+    def moveLink(self, link: Link, neighbour: Element) -> bool:
+        # 2.32 'S will be displaced'
+        if isinstance(neighbour, Substrate):
+            self.displaceSubstrate(link, neighbour)
+            return True
+        # 2.33
+        elif isinstance(neighbour, Hole):
+            self.doSwap(link, neighbour)
+            return True
+        # 2.31
+        elif isinstance(neighbour, (Link, Catalyst)):
+            # do nothing
+            return False
+
 
 class HoleProcess(Process):
 
@@ -346,38 +379,52 @@ class LinkProcess(Process):
                  logger: logging.Logger):
         super().__init__(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
 
-    def displaceSubstrate(self, link: Element, n: Element):
-        # 2.321
-        if n.hasNeighbourOfType(Hole, self.grid):
-            nh = self.chooser.chooseOne(n.getNeighboursOfType(Hole, self.grid))
-            self.doSwap(n, nh)
-        # 2.322
-        elif n.hasNeighbourOfType(Link, self.grid):
-            links = n.getNeighboursOfType(Link, self.grid)
-            # remove 'this'
-            links.remove(link)
-            l = self.chooser.chooseOne([l for l in links if not l.isFree()])
-            h = self.chooser.chooseOne([h for h in l.getNeighboursOfType(Hole, self.grid)])
-            self.doSwap(n, h)
-        # 2.323
-        else:
-            self.doSwap(link, n)
 
     def doStep(self):
         free_l_list = [l for l in self.l_list if l.isFree()]
         for link in self.chooser.shuffleList(free_l_list):
+            # only choose one neighbour to operate upon
             n = self.grid[link.chooseNeighbour(self.chooser)]
-            # 2.32 'S will be displaced'
-            if isinstance(n, Substrate):
-                self.displaceSubstrate(link, n)
-            # 2.33
-            elif isinstance(n, Hole):
-                self.doSwap(link, n)
-            # 2.31
-            elif isinstance(n, (Link, Catalyst)):
-                # do nothing
-                continue
+            # this is best effort so don't care about return type
+            self.moveLink(link, n)
             # 2.4
+            self.doBond()
+
+
+class CatalystProcess(Process):
+
+    def __init__(self, grid: Dict[Point, Element], hole_list: List[Hole], substrate_list: List[Substrate],
+                 catalyst_list: List[Catalyst], link_list: [List], choose_strategy: ChooseStrategy,
+                 logger: logging.Logger):
+        super().__init__(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
+
+    def doStep(self):
+        # 3.1
+        for catalyst in self.chooser.shuffleList(self.k_list):
+            # 3.2
+            n = self.grid[catalyst.chooseNeighbour(self.chooser)]
+            # 3.32 except bonding
+            moved_link = False
+            if (isinstance(n, Link)) and n.isFree():
+                for nl in self.chooser.shuffleList(n.getNeighbours()):
+                    # if L was moved then swap K and L
+                    if self.moveLink(n, nl):
+                        self.doSwap(catalyst, nl)
+                        moved_link = True
+                        break
+                # 3.34
+                if not moved_link:
+                    self.doSwap(Catalyst, n)
+            # 3.33
+            elif (isinstance(n, Substrate)):
+                self.displaceSubstrate(catalyst, n)
+            # 3.35
+            elif (isinstance(n, Hole)):
+                self.doSwap(Catalyst, n)
+            # 3.31
+            elif isinstance(n, Catalyst) or (isinstance(n, Link) and not n.isFree()):
+                pass
+            # move the bonding of 3.32 and 3.34 here
             self.doBond()
 
 

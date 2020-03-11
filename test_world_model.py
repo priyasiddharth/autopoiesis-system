@@ -59,41 +59,6 @@ class TestHoleProcess(TestCase):
                               Point(1, 1): l},
                              grid)
 
-
-class TestLinkProcess(TestCase):
-    def test_displace_substrate(self):
-        size = 4
-        h = Hole(Point(3, 2), size)
-        k1 = Catalyst(Point(1, 1), size)
-        k2 = Catalyst(Point(1, 3), size)
-        k3 = Catalyst(Point(0, 2), size)
-        k4 = Catalyst(Point(2, 1), size)
-        k5 = Catalyst(Point(0, 1), size)
-        k6 = Catalyst(Point(2, 3), size)
-        k7 = Catalyst(Point(3, 3), size)
-        k8 = Catalyst(Point(3, 1), size)
-        s = Substrate(Point(1, 2), size)
-        l = Link(Point(0, 3), size)
-        l1 = Link(Point(2, 2), size)
-        l1.setFree(False)
-        e_list = [h, k1, k2, k3, k4, k5, k6, k7, k8, s, l, l1]
-        grid: [Point, Element] = {}
-        for e in e_list:
-            grid[e.point] = e
-        expected_grid = grid.copy()
-        hole_list = [e for e in e_list if isinstance(e, Hole)]
-        substrate_list = [e for e in e_list if isinstance(e, Substrate)]
-        catalyst_list = [e for e in e_list if isinstance(e, Catalyst)]
-        link_list = [e for e in e_list if isinstance(e, Link)]
-        choose_strategy = ChooseFirstStrategy()
-        logger = logging.getLogger('test')
-        hp = LinkProcess(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
-        hp.displaceSubstrate(l, s)
-        expected_grid[Point(3, 2)] = Substrate(Point(3, 2), size)
-        expected_grid[Point(1, 2)] = Hole(Point(1, 2), size)
-        self.assertDictEqual(expected_grid, grid)
-
-
 class TestLink(TestCase):
     def test_is_bonding_angle_ok_returnsFalse(self):
         h = Hole(Point(1, 1), 2)
@@ -169,3 +134,36 @@ class TestProcess(TestCase):
         p = HoleProcess(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
         p.formBond(l_target, m_list, n_list)
         self.assertCountEqual([l1, l3], l_target.getAllBondedLinks())
+
+    def test_displace_substrate(self):
+        size = 4
+        h = Hole(Point(3, 2), size)
+        k1 = Catalyst(Point(1, 1), size)
+        k2 = Catalyst(Point(1, 3), size)
+        k3 = Catalyst(Point(0, 2), size)
+        k4 = Catalyst(Point(2, 1), size)
+        k5 = Catalyst(Point(0, 1), size)
+        k6 = Catalyst(Point(2, 3), size)
+        k7 = Catalyst(Point(3, 3), size)
+        k8 = Catalyst(Point(3, 1), size)
+        s = Substrate(Point(1, 2), size)
+        l = Link(Point(0, 3), size)
+        l1 = Link(Point(2, 2), size)
+        l1.setFree(False)
+        e_list = [h, k1, k2, k3, k4, k5, k6, k7, k8, s, l, l1]
+        grid: [Point, Element] = {}
+        for e in e_list:
+            grid[e.point] = e
+        expected_grid = grid.copy()
+        hole_list = [e for e in e_list if isinstance(e, Hole)]
+        substrate_list = [e for e in e_list if isinstance(e, Substrate)]
+        catalyst_list = [e for e in e_list if isinstance(e, Catalyst)]
+        link_list = [e for e in e_list if isinstance(e, Link)]
+        choose_strategy = ChooseFirstStrategy()
+        logger = logging.getLogger('test')
+        hp = LinkProcess(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
+        hp.displaceSubstrate(l, s)
+        expected_grid[Point(3, 2)] = Substrate(Point(3, 2), size)
+        expected_grid[Point(1, 2)] = Link(Point(1, 2), size)
+        expected_grid[Point(0, 3)] = Hole(Point(0, 3), size)
+        self.assertDictEqual(expected_grid, grid)
