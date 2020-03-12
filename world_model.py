@@ -25,6 +25,14 @@ class ChooseStrategy(object):
         """
         pass
 
+    def flipWeightedCoin(self) -> bool:
+        """ Returns True with some probability
+
+        :return: True with some probability
+        """
+        pass
+
+
 # TODO: Do I need to mark cells as non-existent to help debugging?
 class Element(object):
     """Base class common to L, K, S and H
@@ -42,10 +50,13 @@ class Element(object):
     def __init__(self, p: Point, n: int):
         assert n > p.x > -1 and n > p.y > -1
         self.point: Point = p
-        self.grid_size: int = n
+        self._grid_size: int = n
 
     def canDisplace(self, o: T) -> bool:
         pass
+
+    def getGridSize(self) -> int:
+        return self._grid_size
 
     def isNeighbour(self, o: T) -> bool:
         if o.point in self.getNeighbours():
@@ -91,11 +102,11 @@ class Element(object):
             n.append(Point(x, y - d))
 
         # east
-        if x + d < self.grid_size:
+        if x + d < self._grid_size:
             n.append(Point(x + d, y))
 
         # south
-        if y + d < self.grid_size:
+        if y + d < self._grid_size:
             n.append(Point(x, y + d))
 
         # west
@@ -107,13 +118,13 @@ class Element(object):
             if y - d >= 0 and x - d >= 0:
                 n.append(Point(x - d, y - d))
             # NE
-            if y - d >= 0 and x + d < self.grid_size:
+            if y - d >= 0 and x + d < self._grid_size:
                 n.append(Point(x + d, y - d))
             # SE
-            if y + d < self.grid_size and x + d < self.grid_size:
+            if y + d < self._grid_size and x + d < self._grid_size:
                 n.append(Point(x + d, y + d))
             # SW
-            if y + d < self.grid_size and x - d >= 0:
+            if y + d < self._grid_size and x - d >= 0:
                 n.append(Point(x - d, y + d))
         return n
 
@@ -160,6 +171,7 @@ class Substrate(Element):
         else:
             return False
 
+
 class Catalyst(Element):
 
     def __init__(self, p: Point, n: int):
@@ -174,6 +186,10 @@ class Catalyst(Element):
 
 
 class Link(Element):
+
+    @staticmethod
+    def CreateLink(x: int, y: int, n: int):
+        return Link(Point(x, y), n)
 
     def __init__(self, p: Point, n: int):
         self._bonded: [Link] = []
@@ -232,6 +248,7 @@ class Link(Element):
 
     def __eq__(self, other):
         return super().__eq__(other) and self._bonded == other._bonded
+
 
 # base class for creating the overall algorithm
 class Process(object):
@@ -356,14 +373,17 @@ def GridPrettyPrintHelper(grid: Dict[Point, T]) -> str:
                 out.append('S')
             elif isinstance(c, Link):
                 if c.isFree():
-                    out.append('l')
+                    out.append('o')
+                elif c.isSinglyBonded():
+                    out.append(chr(149))
                 else:
-                    out.append('L')
+                    out.append(chr(148))
             elif isinstance(c, Catalyst):
                 out.append('K')
-            out.append(' ')
+            out.append(' ')  # space between chars
         out.append('\n')
     return ''.join(out)
+
 
 class HoleProcess(Process):
 
@@ -403,7 +423,6 @@ class LinkProcess(Process):
                  catalyst_list: List[Catalyst], link_list: [List], choose_strategy: ChooseStrategy,
                  logger: logging.Logger):
         super().__init__(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
-
 
     def doStep(self):
         free_l_list = [l for l in self.l_list if l.isFree()]
@@ -449,8 +468,32 @@ class CatalystProcess(Process):
             # 3.3
             elif isinstance(n, Catalyst) or (isinstance(n, Link) and not n.isFree()):
                 pass
-            # move the bonding of 3.32 and 3.34 here
+            # moved the bonding of 3.32 and 3.34 here
             self.doBond()
+
+
+class ProductionProcess(Process):
+
+    def __init__(self, grid: Dict[Point, Element], hole_list: List[Hole], substrate_list: List[Substrate],
+                 catalyst_list: List[Catalyst], link_list: [List], choose_strategy: ChooseStrategy,
+                 logger: logging.Logger):
+        super().__init__(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
+
+    def doStep(self):
+        for catalyst in self.k_list:
+            # !! Use only 1 S instead of 2 to avoid non-local effects during disintegration
+            # K + S -> L + K
+            # 4.1
+            if catalyst.hasNeighbourOfType(Substrate, self.grid):
+                # execute action with some probability
+                if self.chooser.flipWeightedCoin():
+                    # 4.2
+                    s = self.chooser.chooseOne(catalyst.getNeighboursOfType(Substrate, self.grid))
+                    l = Link.CreateLink(s.point.x, s.point.y, s.getGridSize())
+                    self.grid[l.point] = l
+                    del s  # delete the substrate element
+        # 4.3
+        self.doBond()
 
 
 class WorldModel(object):

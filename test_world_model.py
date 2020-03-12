@@ -6,6 +6,9 @@ from world_model import *
 
 class ChooseFirstStrategy(ChooseStrategy):
 
+    def flipWeightedCoin(self) -> bool:
+        return True
+
     def chooseOne(self, args: [T]) -> Optional[T]:
         if not args:
             return None
@@ -151,7 +154,7 @@ class TestProcess(TestCase):
         l = Link(Point(0, 3), size)
         l1 = Link(Point(2, 2), size)
         # Adding garbage value for testing
-        l1._bonded = object
+        l1._bonded = [object]
         e_list = [h, k1, k2, k3, k4, k5, k6, k7, k8, s, l, l1]
         grid: [Point, Element] = {}
         for e in e_list:
@@ -216,6 +219,16 @@ class TestCombined(TestCase):
 
         lp.doStep()
         print(GridPrettyPrintHelper(grid))
+        h = Hole(Point(1, 2), s)
+        l = Link(Point(1, 1), s)
+        expected_grid[h.point] = h
+        expected_grid[l.point] = l
+        self.assertDictEqual(expected_grid, grid)
 
         kp.doStep()
         print(GridPrettyPrintHelper(grid))
+        h = Hole(Point(0, 2), s)
+        k = Catalyst(Point(0, 1), s)
+        expected_grid[h.point] = h
+        expected_grid[k.point] = k
+        self.assertDictEqual(expected_grid, grid)
