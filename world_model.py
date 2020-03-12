@@ -480,7 +480,7 @@ class ProductionProcess(Process):
         super().__init__(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
 
     def doStep(self):
-        for catalyst in self.k_list:
+        for catalyst in self.chooser.shuffleList(self.k_list):
             # !! Use only 1 S instead of 2 to avoid non-local effects during disintegration
             # K + S -> L + K
             # 4.1
