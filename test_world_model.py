@@ -1,3 +1,4 @@
+import os
 from unittest import TestCase
 
 from world_model import *
@@ -149,7 +150,8 @@ class TestProcess(TestCase):
         s = Substrate(Point(1, 2), size)
         l = Link(Point(0, 3), size)
         l1 = Link(Point(2, 2), size)
-        l1.setFree(False)
+        # Adding garbage value for testing
+        l1._bonded = object
         e_list = [h, k1, k2, k3, k4, k5, k6, k7, k8, s, l, l1]
         grid: [Point, Element] = {}
         for e in e_list:
@@ -167,3 +169,53 @@ class TestProcess(TestCase):
         expected_grid[Point(1, 2)] = Link(Point(1, 2), size)
         expected_grid[Point(0, 3)] = Hole(Point(0, 3), size)
         self.assertDictEqual(expected_grid, grid)
+
+
+class TestCombined(TestCase):
+
+    def test_combined_steps(self):
+        # size
+        s = 3
+        h0 = Hole(Point(0, 0), s)
+        h1 = Hole(Point(1, 0), s)
+        h2 = Hole(Point(2, 0), s)
+        h3 = Hole(Point(0, 1), s)
+        h4 = Hole(Point(1, 2), s)
+        h5 = Hole(Point(2, 2), s)
+
+        l = Link(Point(1, 1), s)
+        sb = Substrate(Point(2, 1), s)
+        k = Catalyst(Point(0, 2), s)
+
+        e_list = [h0, h1, h2, h3, h4, h5, l, sb, k]
+        grid: [Point, T] = {}
+        for e in e_list:
+            grid[e.point] = e
+        expected_grid = grid.copy()
+        hole_list = [e for e in e_list if isinstance(e, Hole)]
+        substrate_list = [e for e in e_list if isinstance(e, Substrate)]
+        catalyst_list = [e for e in e_list if isinstance(e, Catalyst)]
+        link_list = [e for e in e_list if isinstance(e, Link)]
+        choose_strategy = ChooseFirstStrategy()
+        logging.basicConfig(level=os.environ.get("LOGLEVEL", "DEBUG"))
+        logger = logging.getLogger('test')
+        logger.setLevel('DEBUG')
+        hp = HoleProcess(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
+        lp = LinkProcess(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
+        kp = CatalystProcess(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
+        hp.doStep()
+        print(GridPrettyPrintHelper(grid))
+        h_e1 = Hole(Point(2, 1), s)
+        sb1 = Substrate(Point(2, 0), s)
+        h_e2 = Hole(Point(1, 1), s)
+        l_e1 = Link(Point(1, 2), s)
+        e_list = [h_e1, sb1, h_e2, l_e1]
+        for e in e_list:
+            expected_grid[e.point] = e
+        self.assertDictEqual(expected_grid, grid)
+
+        lp.doStep()
+        print(GridPrettyPrintHelper(grid))
+
+        kp.doStep()
+        print(GridPrettyPrintHelper(grid))

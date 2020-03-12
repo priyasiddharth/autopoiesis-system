@@ -1,5 +1,6 @@
 import collections
 import logging
+import math
 import typing
 from typing import Dict, List, TypeVar, Optional
 
@@ -175,7 +176,6 @@ class Catalyst(Element):
 class Link(Element):
 
     def __init__(self, p: Point, n: int):
-        self._free = True
         self._bonded: [Link] = []
         super().__init__(p, n)
 
@@ -189,7 +189,7 @@ class Link(Element):
         self._free = b
 
     def isFree(self):
-        return self._free
+        return len(self._bonded) == 0
 
     def isSinglyBonded(self) -> bool:
         return len(self._bonded) == 1
@@ -230,6 +230,9 @@ class Link(Element):
                 return False
         return True
 
+    def __eq__(self, other):
+        return super().__eq__(other) and self._bonded == other._bonded
+
 # base class for creating the overall algorithm
 class Process(object):
 
@@ -250,13 +253,14 @@ class Process(object):
         self.logger: logging.Logger = logger
 
     def doSwap(self, this: Element, other: Element):
-        # assert this.isNeighbour(other)
+        self.logger.debug('Swapping {0} and {1}'.format(this, other))
         temp = self.grid[this.point]
         self.grid[this.point] = other
         self.grid[other.point] = temp
         this.swap(other)
 
-    def bondTwo(self, l1: Link, l2: Link):
+    def dobondTwo(self, l1: Link, l2: Link):
+        self.logger.debug('Bonding {0} and {1}'.format(l1, l2))
         l1.addBond(l2)
         l2.addBond(l1)
 
@@ -269,14 +273,14 @@ class Process(object):
                 return
             # 6.43
             n = self.chooser.chooseOne(n_list_filtered)
-            self.bondTwo(target, n)
+            self.dobondTwo(target, n)
 
         # 6.2
         m_list = [m for m in m_list if target.isBondingAngleOk(m, self.grid)]
         # 6.3
         if len(m_list) >= 1:
             m1 = self.chooser.chooseOne(m_list)
-            self.bondTwo(target, m1)
+            self.dobondTwo(target, m1)
             # 6.3 contd
             if len(m_list) > 1:
                 # remove m1
@@ -286,7 +290,7 @@ class Process(object):
                     bondWithFreeL(target, n_list)
                     return
                 else:
-                    self.bondTwo(target, m2)
+                    self.dobondTwo(target, m2)
                     return
         # 6.4
         bondWithFreeL(target, n_list)
@@ -340,6 +344,27 @@ class Process(object):
             return False
 
 
+def GridPrettyPrintHelper(grid: Dict[Point, T]) -> str:
+    m = int(math.sqrt(len(grid)))
+    out = []
+    for j in range(m):
+        for i in range(m):
+            c = grid[(i, j)]
+            if isinstance(c, Hole):
+                out.append('H')
+            elif isinstance(c, Substrate):
+                out.append('S')
+            elif isinstance(c, Link):
+                if c.isFree():
+                    out.append('l')
+                else:
+                    out.append('L')
+            elif isinstance(c, Catalyst):
+                out.append('K')
+            out.append(' ')
+        out.append('\n')
+    return ''.join(out)
+
 class HoleProcess(Process):
 
     def __init__(self, grid: Dict[Point, Element], hole_list: List[Hole], substrate_list: List[Substrate],
@@ -367,7 +392,7 @@ class HoleProcess(Process):
             # 1.31
             elif isinstance(n, Hole):
                 # do nothing
-                continue
+                pass
             # 1.4
             self.doBond()
 
@@ -416,12 +441,12 @@ class CatalystProcess(Process):
                 if not moved_link:
                     self.doSwap(Catalyst, n)
             # 3.33
-            elif (isinstance(n, Substrate)):
+            elif isinstance(n, Substrate):
                 self.displaceSubstrate(catalyst, n)
             # 3.35
-            elif (isinstance(n, Hole)):
-                self.doSwap(Catalyst, n)
-            # 3.31
+            elif isinstance(n, Hole):
+                self.doSwap(catalyst, n)
+            # 3.3
             elif isinstance(n, Catalyst) or (isinstance(n, Link) and not n.isFree()):
                 pass
             # move the bonding of 3.32 and 3.34 here
