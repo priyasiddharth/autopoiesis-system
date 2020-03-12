@@ -1,4 +1,5 @@
 import collections
+import itertools
 import logging
 import math
 import typing
@@ -162,6 +163,10 @@ class Hole(Element):
 
 class Substrate(Element):
 
+    @staticmethod
+    def CreateSubstrate(x: int, y: int, n: int):
+        return Substrate(Point(x, y), n)
+
     def __init__(self, p: Point, n: int):
         super().__init__(p, n)
 
@@ -207,13 +212,25 @@ class Link(Element):
     def isFree(self):
         return len(self._bonded) == 0
 
+    def canBond(self):
+        return len(self._bonded) < 2
+
     def isSinglyBonded(self) -> bool:
         return len(self._bonded) == 1
 
     def addBond(self, l: 'Link'):
         assert self.isNeighbour(l)
         assert len(self._bonded) <= 1
+        if l in self._bonded:
+            # TODO: log a warning here
+            return
         self._bonded.append(l)
+
+    def removeBond(self, l: 'Link') -> bool:
+        if l in self._bonded:
+            self._bonded.remove(l)
+            return l.removeBond(self)
+        return False
 
     def getAllBondedLinks(self) -> ['Link']:
         return self._bonded
@@ -494,6 +511,60 @@ class ProductionProcess(Process):
                     del s  # delete the substrate element
         # 4.3
         self.doBond()
+
+
+class DisintegrationProcess(Process):
+
+    def __init__(self, grid: Dict[Point, Element], hole_list: List[Hole], substrate_list: List[Substrate],
+                 catalyst_list: List[Catalyst], link_list: [List], choose_strategy: ChooseStrategy,
+                 logger: logging.Logger):
+        super().__init__(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
+
+    def doRebond(self, p: Point):
+        element = self.grid[p]
+        # 7.1 start with singly bonded Ls
+        candidate_l_list = [typing.cast(Link, e) for e in element.getNeighboursOfType(Link, self.grid) if
+                            typing.cast(Link, e).isSinglyBonded()]
+        free_l_list = [typing.cast(Link, e) for e in element.getNeighboursOfType(Link, self.grid) if
+                       typing.cast(Link, e).isFree()]
+
+        while candidate_l_list:
+            candidate_pairs: [(Link, Link)] = itertools.combinations(candidate_l_list, 2)
+            valid_pairs: [(Link, Link)] = []
+            for (c0, c1) in candidate_pairs:
+                if not c0.isNeighbour(c1):
+                    continue
+                if c0 in c1.getAllBondedLinks():
+                    continue
+                if not c0.isBondingAngleOk(c1, self.grid):
+                    continue
+                valid_pairs.append((c0, c1))
+            # start forming bonds
+            used_links = []
+            for (l0, l1) in self.chooser.shuffleList(valid_pairs):
+                if l0.canBond(l1):
+                    self.dobondTwo(l0, l1)
+                    used_links.append(l0)
+                    used_links.append(l1)
+            # 7.4
+            candidate_l_list.extend(free_l_list)
+            # 7.5
+            candidate_l_list = [c for c in candidate_l_list if c not in used_links]
+
+    def doStep(self):
+        for link in self.chooser.shuffleList(self.l_list):
+            if self.chooser.flipWeightedCoin():
+                p = link.point
+                for bonded in link.getAllBondedLinks():
+                    # TODO: Revisit if I have to care about return type
+                    # probably not since bonded is guaranteed to be in link bonded list
+                    # and we assume that we formed bond correctly and put link in bonded_list of bonded
+                    link.removeBond(bonded)
+                # disintegrate L to S
+                self.grid[p] = Substrate.createSubstrate(p, link.getGridSize())
+                # destroy L
+                del link
+                self.doRebond(p)
 
 
 class WorldModel(object):
