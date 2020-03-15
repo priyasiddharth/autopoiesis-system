@@ -4,6 +4,17 @@ from unittest import TestCase
 from world_model import *
 
 
+def InitGird(c: typing.Type[T], grid_size) -> ([T], Dict[Point, T]):
+    elem_list = []
+    grid = {}
+    for j in range(grid_size):
+        for i in range(grid_size):
+            e = c(Point(i, j), grid_size)
+            grid[e.point] = e
+            elem_list.append(e)
+    return elem_list, grid
+
+
 class ChooseFirstStrategy(ChooseStrategy):
 
     def flipWeightedCoin(self) -> bool:
@@ -16,6 +27,7 @@ class ChooseFirstStrategy(ChooseStrategy):
 
     def shuffleList(self, args: [T]) -> [T]:
         return args.copy()
+
 
 class TestElement(TestCase):
     def test_can_displace(self):
@@ -62,6 +74,7 @@ class TestHoleProcess(TestCase):
                               Point(1, 0): h,
                               Point(1, 1): l},
                              grid)
+
 
 class TestLink(TestCase):
     def test_is_bonding_angle_ok_returnsFalse(self):
@@ -232,3 +245,74 @@ class TestCombined(TestCase):
         expected_grid[h.point] = h
         expected_grid[k.point] = k
         self.assertDictEqual(expected_grid, grid)
+
+
+class TestDisintegrationProcess(TestCase):
+    def test_do_rebond(self):
+        size = 3
+        link_list, grid = InitGird(Link, size)
+        s = Substrate(Point(1, 1), size)
+        grid[Point(1, 1)] = s
+        l_02 = grid[Point(0, 2)]
+        l_12 = grid[Point(1, 2)]
+        l_10 = grid[Point(1, 0)]
+        l_20 = grid[Point(2, 0)]
+        hole_list = []
+        substrate_list = [s]
+        catalyst_list = []
+        choose_strategy = ChooseFirstStrategy()
+        logger = logging.getLogger('test')
+        dp = DisintegrationProcess(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
+        dp.dobondTwo(l_02, l_12)
+        dp.dobondTwo(l_10, l_20)
+        dp.doRebond(s.point)
+        self.assertEqual("L B B \nB S B \nB B L \n", GridPrettyPrintHelper(grid))
+
+    def test_disintegrate(self):
+        size = 2
+        hole_list, grid = InitGird(Hole, size)
+        s = Substrate(Point(0, 0), size)
+        l0 = Link(Point(0, 0), size)
+        l1 = Link((Point(1, 0)), size)
+        substrate_list = []
+        catalyst_list = []
+        link_list = [l0, l1]
+        grid[l0.point] = l0
+        grid[l1.point] = l1
+        hole_list = [h for h in hole_list if h.point not in [Point(0, 0), Point(1, 0)]]
+        orig_hole_list = hole_list.copy()
+        choose_strategy = ChooseFirstStrategy()
+        logger = logging.getLogger('test')
+        dp = DisintegrationProcess(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
+        dp.dobondTwo(l0, l1)
+        dp.disintegrate(l0)
+        self.assertEqual([s], dp.s_list)
+        self.assertEqual([l1], dp.l_list)
+        self.assertEqual([], dp.k_list)
+        self.assertEqual(orig_hole_list, dp.h_list)
+        self.assertEqual("S L \nH H \n", GridPrettyPrintHelper(grid))
+
+
+class TestProductionProcess(TestCase):
+    def test_doStep(self):
+        size = 2
+        hole_list, grid = InitGird(Hole, size)
+        s = Substrate(Point(0, 0), size)
+        l = Link(Point(0, 0), size)  # to be used later
+        k = Catalyst(Point(1, 0), size)
+        substrate_list = [s]
+        catalyst_list = [k]
+        link_list = []
+        grid[s.point] = s
+        grid[k.point] = k
+        hole_list = [h for h in hole_list if h.point not in [Point(0, 0), Point(1, 0)]]
+        orig_hole_list = hole_list.copy()
+        choose_strategy = ChooseFirstStrategy()
+        logger = logging.getLogger('test')
+        pp = ProductionProcess(grid, hole_list, substrate_list, catalyst_list, link_list, choose_strategy, logger)
+        pp.doStep()
+        self.assertEqual([], pp.s_list)
+        self.assertEqual([l], pp.l_list)
+        self.assertEqual([k], pp.k_list)
+        self.assertEqual(orig_hole_list, pp.h_list)
+        self.assertEqual("L K \nH H \n", GridPrettyPrintHelper(grid))
