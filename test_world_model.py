@@ -17,7 +17,10 @@ def InitGird(c: typing.Type[T], grid_size) -> ([T], Dict[Point, T]):
 
 class ChooseFirstStrategy(ChooseStrategy):
 
-    def flipWeightedCoin(self) -> bool:
+    def chooseDisintegrate(self) -> bool:
+        return True
+
+    def chooseIntegrate(self) -> bool:
         return True
 
     def chooseOne(self, args: [T]) -> Optional[T]:

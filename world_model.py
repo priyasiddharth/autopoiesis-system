@@ -2,12 +2,13 @@ import collections
 import itertools
 import logging
 import math
+import random
 import typing
 from typing import Dict, List, TypeVar, Optional
-
 Point = collections.namedtuple('Point', ['x', 'y'])
 
 T = TypeVar('T', bound='Element')  # Declare type variable
+DISINTEGRATE_PROB = 0.1
 
 
 class ChooseStrategy(object):
@@ -26,13 +27,18 @@ class ChooseStrategy(object):
         """
         pass
 
-    def flipWeightedCoin(self) -> bool:
+    def chooseDisintegrate(self) -> bool:
         """ Returns True with some probability
 
         :return: True with some probability
         """
         pass
 
+    def chooseIntegrate(self) -> bool:
+        """Returns True with some probability
+
+        :return: True with some probability
+        """
 
 # TODO: Do I need to mark cells as non-existent to help debugging?
 class Element(object):
@@ -197,7 +203,7 @@ class Link(Element):
         return Link(Point(x, y), n)
 
     def __init__(self, p: Point, n: int):
-        self._bonded: [Link] = []
+        self._bonded: ['Link'] = []
         super().__init__(p, n)
 
     def canDisplace(self, o):
@@ -229,8 +235,7 @@ class Link(Element):
     def removeBond(self, l: 'Link') -> bool:
         if l in self._bonded:
             self._bonded.remove(l)
-            return l.removeBond(self)
-        return False
+            l.removeBond(self)
 
     def getAllBondedLinks(self) -> ['Link']:
         return self._bonded
@@ -351,6 +356,7 @@ class Process(object):
         self.logger.error('doStep() not implemented')
 
     def displaceSubstrate(self, element: T, neighbour: T):
+
         # 2.321
         if neighbour.hasNeighbourOfType(Hole, self.grid):
             neighbour_hole = self.chooser.chooseOne(neighbour.getNeighboursOfType(Hole, self.grid))
@@ -360,9 +366,18 @@ class Process(object):
         elif neighbour.hasNeighbourOfType(Link, self.grid):
             links = neighbour.getNeighboursOfType(Link, self.grid)
             # remove 'this'
-            links.remove(element)
+            links.remove(element) if element in links else None
             l = self.chooser.chooseOne([l for l in links if not l.isFree()])
-            h = self.chooser.chooseOne([h for h in l.getNeighboursOfType(Hole, self.grid)])
+            if not l:
+                # 2.323
+                self.doSwap(element, neighbour)
+                return
+            h = self.chooser.chooseOne([h for h in l.getNeighboursOfType(Hole, self.grid)]) if l.hasNeighbourOfType(
+                Hole, self.grid) else []
+            if not h:
+                # 2.323
+                self.doSwap(element, neighbour)
+                return
             self.doSwap(neighbour, h)
             self.doSwap(element, h)
         # 2.323
@@ -425,13 +440,12 @@ class HoleProcess(Process):
                 if n.isFree():
                     self.doSwap(hole, n)
                 # 1.32 'L is bonded, swap with extended neighbour S'
-                else:
+                elif n.hasNeighbourOfType(Substrate, self.grid):
                     s_list = [s for s in n.getNeighboursOfType(Substrate, self.grid)]
                     en_list = hole.getExtendedNeighbours()
                     # find the right extended neighbour
                     common_s = [e for e in en_list if e in s_list]
-                    assert len(common_s) == 1
-                    self.doSwap(hole, common_s[0])
+                    self.doSwap(hole, common_s[0]) if common_s else None
             # 1.31
             elif isinstance(n, Hole):
                 # do nothing
@@ -481,7 +495,7 @@ class CatalystProcess(Process):
                         break
                 # 3.34
                 if not moved_link:
-                    self.doSwap(Catalyst, n)
+                    self.doSwap(catalyst, n)
             # 3.33
             elif isinstance(n, Substrate):
                 self.displaceSubstrate(catalyst, n)
@@ -509,7 +523,7 @@ class ProductionProcess(Process):
             # 4.1
             if catalyst.hasNeighbourOfType(Substrate, self.grid):
                 # execute action with some probability
-                if self.chooser.flipWeightedCoin():
+                if self.chooser.chooseIntegrate():
                     # 4.2
                     self.produce(catalyst)
         # 4.3
@@ -518,6 +532,7 @@ class ProductionProcess(Process):
     def produce(self, catalyst):
         s = self.chooser.chooseOne(catalyst.getNeighboursOfType(Substrate, self.grid))
         l = Link.createlink(s.point.x, s.point.y, s.getGridSize())
+        self.logger.debug('{0} becomes {1}'.format(s, l))
         self.grid[l.point] = l
         self.l_list.append(l)
         self.s_list.remove(s)
@@ -535,9 +550,10 @@ class DisintegrationProcess(Process):
         element = self.grid[p]
         # 7.1 start with singly bonded Ls
         candidate_l_list = [typing.cast(Link, e) for e in element.getNeighboursOfType(Link, self.grid) if
-                            typing.cast(Link, e).isSinglyBonded()]
+                            typing.cast(Link, e).isSinglyBonded()] if element.hasNeighbourOfType(Link,
+                                                                                                 self.grid) else []
         free_l_list = [typing.cast(Link, e) for e in element.getNeighboursOfType(Link, self.grid) if
-                       typing.cast(Link, e).isFree()]
+                       typing.cast(Link, e).isFree()] if element.hasNeighbourOfType(Link, self.grid) else []
 
         used_links = []
         while candidate_l_list:
@@ -579,13 +595,15 @@ class DisintegrationProcess(Process):
 
     def doStep(self):
         for link in self.chooser.shuffleList(self.l_list):
-            if self.chooser.flipWeightedCoin():
+            if self.chooser.chooseDisintegrate():
+                self.logger.debug('{0} is disintegrating'.format(link))
                 p = self.disintegrate(link)
                 self.doRebond(p)
 
     def disintegrate(self, link):
         p = link.point
-        for bonded in link.getAllBondedLinks():
+        bb = link.getAllBondedLinks().copy()
+        for bonded in bb:
             # TODO: Revisit if I have to care about return type
             # probably not since bonded is guaranteed to be in link bonded list
             # and we assume that we formed bond correctly and put link in bonded_list of bonded
@@ -600,7 +618,67 @@ class DisintegrationProcess(Process):
         return p
 
 
-class WorldModel(object):
+class ChooseRandomStrategy(ChooseStrategy):
 
-    def __init__(self, choose_strategy):
-        self.choose_strategy = choose_strategy
+    def __init__(self, seed):
+        self._rng = random.seed(seed)
+
+    def chooseDisintegrate(self) -> bool:
+        return random.random() < DISINTEGRATE_PROB
+
+    def chooseIntegrate(self) -> bool:
+        return random.random() >= DISINTEGRATE_PROB
+
+    def chooseOne(self, args: [T]) -> Optional[T]:
+        if not args:
+            return None
+        return random.choice(args)
+
+    def shuffleList(self, args: [T]) -> [T]:
+        return random.sample(args, k=len(args))
+
+
+class WorldFactory(object):
+
+    def __int__(self):
+        pass
+
+    def createGrid(self, hole_list: [Hole], substrate_list: [Substrate], catalyst_list: [Catalyst], link_list: [Link],
+                   default: typing.TypeVar(T), grid_size: int) -> Dict[Point, T]:
+        grid = {}
+        for j in range(grid_size):
+            for i in range(grid_size):
+                grid[Point(i, j)] = default(Point(i, j), grid_size)
+        for e in itertools.chain(hole_list, substrate_list, catalyst_list, link_list):
+            grid[e.point] = e
+        return grid
+
+    def getListsFromGrid(self, grid: Dict[Point, T]) -> ([Hole], [Substrate], [Catalyst], [Link]):
+        h_list = []
+        s_list = []
+        k_list = []
+        l_list = []
+        for p in grid.keys():
+            e = grid[p]
+            if isinstance(e, Hole):
+                h_list.append(e)
+            elif isinstance(e, Substrate):
+                s_list.append(e)
+            elif isinstance(e, Catalyst):
+                k_list.append(e)
+            elif isinstance(e, Link):
+                l_list.append(e)
+        return h_list, s_list, k_list, l_list
+
+    def createAllProcesses(self, grid) -> (
+            HoleProcess, LinkProcess, CatalystProcess, ProductionProcess, DisintegrationProcess):
+        choose_strategy = ChooseRandomStrategy(seed=0)
+        logger = logging.getLogger('generic')
+        logger.setLevel('INFO')
+        (hh, ss, kk, ll) = self.getListsFromGrid(grid)
+        hp = HoleProcess(grid, hh, ss, kk, ll, choose_strategy, logger)
+        lp = LinkProcess(grid, hh, ss, kk, ll, choose_strategy, logger)
+        kp = CatalystProcess(grid, hh, ss, kk, ll, choose_strategy, logger)
+        pp = ProductionProcess(grid, hh, ss, kk, ll, choose_strategy, logger)
+        dp = DisintegrationProcess(grid, hh, ss, kk, ll, choose_strategy, logger)
+        return hp, lp, kp, pp, dp

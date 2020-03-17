@@ -1,0 +1,7 @@
+{
+  "grid_size": 10,
+  "max_iter": 100,
+  "default": "Substrate",
+  "Holes": "[(0, 0), (0, 4), (4, 0), (4, 4), (4, 3), (4, 2), (4, 1)]",
+  "Catalysts": "[(1, 1)]"
+}
