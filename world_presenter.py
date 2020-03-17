@@ -84,9 +84,9 @@ class WorldPresenter(object):
         link_list = [l for l in self._disintegrate_process.l_list if len(l.getAllBondedLinks()) == 2]
         r = []
         for l in link_list:
-            r = helper.FindCycle(l.getBondedLink(0), [l])
+            r = helper.FindCycle(l, [])
             if r:
-                return [l] + r
+                return r
         return r
 
     def doSimulate(self):
