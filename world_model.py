@@ -6,9 +6,8 @@ import random
 import typing
 from typing import Dict, List, TypeVar, Optional
 
-import helper
-
 Point = collections.namedtuple('Point', ['x', 'y'])
+Life = collections.namedtuple('Life', ['born', 'dead', 'length'])
 
 T = TypeVar('T', bound='Element')  # Declare type variable
 DISINTEGRATE_PROB = 0.1
@@ -312,8 +311,12 @@ class Process(object):
         self.grid[other.point] = temp
         this.swap(other)
 
+    def checkBondAngle(self, l1: Link, l2: Link):
+        return l1.isBondingAngleOk(l2, self.grid) and l2.isBondingAngleOk(l1, self.grid)
+
     def dobondTwo(self, l1: Link, l2: Link):
         self.logger.debug('Bonding {0} and {1}'.format(l1, l2))
+        assert l1.isBondingAngleOk(l2, self.grid) and l2.isBondingAngleOk(l1, self.grid)
         l1.addBond(l2)
         l2.addBond(l1)
 
@@ -321,7 +324,7 @@ class Process(object):
         def bondWithFreeL(target: Link, n_list: [Link]):
             # 6.41
             n_list_filtered = [n for n in n_list if
-                               n.isBondingAngleOk(target, self.grid)]
+                               self.checkBondAngle(n, target)]
             # 6.42
             if not n_list_filtered:
                 return
@@ -330,7 +333,7 @@ class Process(object):
             self.dobondTwo(target, n)
 
         # 6.2
-        m_list = [m for m in m_list if target.isBondingAngleOk(m, self.grid)]
+        m_list = [m for m in m_list if self.checkBondAngle(target, m)]
         # 6.3
         if len(m_list) >= 1:
             m1 = self.chooser.chooseOne(m_list)
@@ -339,9 +342,7 @@ class Process(object):
             if len(m_list) > 1:
                 # remove m1
                 m_list.remove(m1)
-                m2 = self.chooser.chooseOne([m for m in m_list if
-                                             target.isBondingAngleOk(m,
-                                                                     self.grid)])
+                m2 = self.chooser.chooseOne([m for m in m_list if self.checkBondAngle(target, m)])
                 if m2 is None:
                     bondWithFreeL(target, n_list)
                     return
@@ -621,12 +622,12 @@ class DisintegrationProcess(Process):
                     continue
                 if c0 in c1.getAllBondedLinks():
                     continue
-                if not c0.isBondingAngleOk(c1, self.grid):
+                if not self.checkBondAngle(c0, c1):
                     continue
                 valid_pairs.append((c0, c1))
             # start forming bonds
             for (l0, l1) in self.chooser.shuffleList(valid_pairs):
-                if not l0.isBondingAngleOk(l1, self.grid):
+                if not self.checkBondAngle(l0, l1):
                     continue
                 if l0.canBond():
                     self.dobondTwo(l0, l1)
@@ -677,59 +678,105 @@ class CycleObserver(Process):
     def __init__(self, grid: Dict[Point, Element], hole_list: List[Hole],
                  substrate_list: List[Substrate], catalyst_list: List[Catalyst],
                  link_list: [List], choose_strategy: ChooseStrategy,
-                 logger: logging.Logger, ):
+                 logger: logging.Logger):
         super().__init__(grid, hole_list, substrate_list, catalyst_list,
                          link_list, choose_strategy, logger)
         self.min_cycle_length = 4
-        self.cycle = []
+        self.cycles = []
+        self.born = {}
+        self.cycle_size = {}
 
-    def doStep(self):
-        super().doStep()
-        cycle_formed = False
-        cycle_broken = False
-        if not self.cycle:
-            link_list = [l for l in self.l_list if
-                         len(l.getAllBondedLinks()) == 2]
-            r = []
-            for l in link_list:
-                r = helper.FindCycle(l, [])
-            if len(r) >= self.min_cycle_length:
-                self.logger.info('Found cycle:{0} len:{1}'.format(r, len(r)))
-                self.cycle = r
-                cycle_formed = True
-        else:
-            cycle_formed = True
-            links = [l for l in self.cycle if not l.canBond()]
-            if links:
-                r = helper.FindCycle(links[0], [])
-                if not r:
-                    cycle_broken = True
-                    self.cycle = []
-                    self.logger.info('cycle broken!')
-                elif r != self.cycle and len(r) >= self.min_cycle_length:
-                    self.cycle = r
-                    self.logger.info('Repaired cycle:{0} len:{1}'.format(r,
-                                                                         len(
-                                                                             r)))
-                elif r == self.cycle:
-                    cycle_broken = False
-                    self.logger.info('Maintained cycle:{0} len:{1}'.format(r,
-                                                                           len(
-                                                                               r)))
+    def getCycleKey(self, cycle: [Link]) -> frozenset([Point]):
+        # sort by distance from origin
+        return frozenset(sorted([i.point for i in cycle], key=lambda p: math.sqrt((p.x) ** 2 + (p.y) ** 2)))
 
-                else:  # cycle length < self.min_cycle_length
-                    self.cycle = []
-                    cycle_broken = True
-                    self.logger.info(
-                        'cycle discarded:{0} len:{1}'.format(r, len(r)))
+    def cycEq(self, cycle1: [Link], cycle2: [Link]) -> bool:
+        return self.getCycleKey(cycle1) == self.getCycleKey(cycle2)
 
+    @staticmethod
+    def FindCycle(link: 'Link', visited: ['Link']) -> List['Link']:
+        if link.isFree():
+            return []
+        if link.isSinglyBonded():
+            return []
+        if len(link.getAllBondedLinks()) == 2:
+            if not link.getBondedLink(0) in visited:
+                r = CycleObserver.FindCycle(link.getBondedLink(0), visited + [link])
+            elif not link.getBondedLink(1) in visited:
+                r = CycleObserver.FindCycle(link.getBondedLink(1), visited + [link])
             else:
-                self.logger.info('Cycle broken!')
-                self.cycle = []
-                cycle_broken = True
+                return [link]
+            if not r:
+                return []
+            else:
+                return [link] + r
 
-        return cycle_formed, cycle_broken, len(self.cycle)
+    def doStep(self, exp: 'Experiment'):
+        super().doStep()
+        # process existing/bad cycles
+        cycles_copy = [inner.copy() for inner in self.cycles.copy()]
+        for cycle in cycles_copy:
+            links = [e for e in [self.grid[p] for p in cycle] if isinstance(e, Link) and not typing.cast(Link,
+                                                                                                         e).canBond()]
+            if links:
+                r = CycleObserver.FindCycle(links[0], [])
+                if not r:
+                    b = self.born[cycle]
+                    d = exp.getTime()
+                    l = self.cycle_size[cycle]
+                    exp.addRecord(b, d, l)
+                    self.cycles.remove(cycle)
+                    del self.born[cycle]
+                    del self.cycle_size[cycle]
+                    self.logger.info('cycle broken:{0} len:{1} iter:{2}'.format(cycle, len(cycle), exp.getTime()))
+                elif self.getCycleKey(r) != cycle and len(r) >= self.min_cycle_length and self.getCycleKey(r) not in \
+                        self.cycles:
+                    # cycle has mutated but is still a cycle
+                    # Add new cycle
+                    self.cycles.append(self.getCycleKey(r))
+                    self.born[self.getCycleKey(r)] = self.born[cycle]
+                    self.cycle_size[self.getCycleKey(r)] = len(r)
 
+                    # delete old cycle
+                    self.cycles.remove(cycle)
+                    del self.born[cycle]
+                    del self.cycle_size[cycle]
+                    self.logger.info('Repaired cycle:{0} len:{1} iter:{2}'.format(r, len(r), exp.getTime()))
+                elif self.getCycleKey(r) == cycle:
+                    # nothing to do here
+                    self.logger.info('Maintained cycle:{0} len:{1} iter:{2}'.format(r,
+                                                                                    len(
+                                                                                        r), exp.getTime()))
+                else:  # cycle length < self.min_cycle_length
+                    # delete old cycle
+                    self.cycles.remove(cycle)
+                    del self.born[cycle]
+                    del self.cycle_size[cycle]
+                    self.logger.info(
+                        'cycle discarded:{0} len:{1} iter:{2}'.format(r, len(r), exp.getTime()))
+            else:  # no links found
+                b = self.born[cycle]
+                d = exp.getTime()
+                l = self.cycle_size[cycle]
+                exp.addRecord(b, d, l)
+                self.cycles.remove(cycle)
+                del self.born[cycle]
+                del self.cycle_size[cycle]
+                self.logger.info('cycle broken:{0} len:{1} iter:{2}'.format(cycle, len(cycle), exp.getTime()))
+
+        # process new cycles
+        link_list = [l for l in self.l_list if
+                     len(l.getAllBondedLinks()) == 2]
+        for l in link_list:
+            r = CycleObserver.FindCycle(l, [])
+            if self.getCycleKey(r) in self.cycles:
+                # we already recorded this link, goto next
+                continue
+            if len(r) >= self.min_cycle_length:
+                self.logger.info('Found cycle:{0} len:{1} iter:{2}'.format(r, len(r), exp.getTime()))
+                self.cycles.append(self.getCycleKey(r))
+                self.born[self.getCycleKey(r)] = exp.getTime()
+                self.cycle_size[self.getCycleKey(r)] = len(r)
 
 class ChooseRandomStrategy(ChooseStrategy):
 
@@ -757,7 +804,7 @@ class WorldFactory(object):
     def __int__(self):
         pass
 
-    def createRandomGrid(self, grid_size: int, random_seed: int, weights: [int] = [9, 90, 1]) -> Dict[Point, T]:
+    def createRandomGrid(self, grid_size: int, random_seed: int = 0, weights: [int] = [9, 90, 1]) -> Dict[Point, T]:
         # this grid will not have L starting out
         random.seed(random_seed)
         grid = {}
@@ -807,25 +854,23 @@ class WorldFactory(object):
         hole_process, link_process, catalyst_process, \
         prod_process, disintegrate_process, cycle_observer \
             = self.createAllProcesses(grid, proc_random_seed, disintegrate_prob)
-        return WorldContext(max_iter=max_iter, weights=weights, grid_random_seed=grid_random_seed,
-                            process_random_seed=proc_random_seed, hole_process=hole_process,
-                            link_process=link_process, catalyst_process=catalyst_process,
-                            production_process=prod_process, disintegration_process=disintegrate_process,
-                            cycle_observer=cycle_observer, grid=grid)
+        return WorldContext(max_iter=max_iter, grid=grid, hole_process=hole_process, link_process=link_process,
+                            catalyst_process=catalyst_process, production_process=prod_process,
+                            disintegration_process=disintegrate_process, cycle_observer=cycle_observer)
 
-    def createWorld(self):
-        # grid = self.createGrid(self._config.h_plist,
-        #                                 self._config.s_plist,
-        #                                 self._config.k_plist,
-        #                                 self._config.l_plist,
-        #                                 self._config.default_element,
-        #                                 self._config.grid_size)
-        # hole_process, link_process, catalyst_process, \
-        # prod_process, disintegrate_process, cycle_observer \
-        #     = self.createAllProcesses(
-        #     self._grid)
-        # need to return a WorldContext object
-        assert False
+    def createWorld(self, config: 'helper.Config'):
+        grid = self.createGrid(config.h_plist,
+                               config.s_plist,
+                               config.k_plist,
+                               config.l_plist,
+                               config.default_element,
+                               config.grid_size)
+        hole_process, link_process, catalyst_process, \
+        prod_process, disintegrate_process, cycle_observer \
+            = self.createAllProcesses(grid, config.disintegrate_prob)
+        return WorldContext(max_iter=config.iter, grid=grid, hole_process=hole_process, link_process=link_process,
+                            catalyst_process=catalyst_process, production_process=prod_process,
+                            disintegration_process=disintegrate_process, cycle_observer=cycle_observer)
 
     def createAllProcesses(self, grid, random_seed: int, disintegration_prob: float = DISINTEGRATE_PROB) -> (
             HoleProcess, LinkProcess, CatalystProcess, ProductionProcess,
@@ -848,10 +893,9 @@ class WorldFactory(object):
 
 class WorldContext(object):
 
-    def __init__(self, max_iter: int, weights: List[int], grid_random_seed: int, process_random_seed: int,
-                 grid: Dict[Point, T], hole_process: HoleProcess, link_process: LinkProcess, catalyst_process:
-            CatalystProcess,
-                 production_process: ProductionProcess, disintegration_process: DisintegrationProcess,
+    def __init__(self, max_iter: int, grid: Dict[Point, T], hole_process: HoleProcess, link_process: LinkProcess,
+                 catalyst_process:
+                 CatalystProcess, production_process: ProductionProcess, disintegration_process: DisintegrationProcess,
                  cycle_observer: CycleObserver):
         self.grid = grid
         self.cycle_observer = cycle_observer
@@ -860,7 +904,35 @@ class WorldContext(object):
         self.catalyst_process = catalyst_process
         self.link_process = link_process
         self.hole_process = hole_process
-        self.process_random_seed = process_random_seed
-        self.grid_random_seed = grid_random_seed
-        self.weights = weights
         self.max_iter = max_iter
+
+
+class Experiment(object):
+
+    def __init__(self):
+        self._time = 0
+
+    def incTime(self):
+        self._time = self._time + 1
+
+    def getTime(self):
+        return self._time
+
+    def addRecord(self, born: int, dead: int, length: int):
+        pass
+
+    def process(self):
+        pass
+
+
+class AliveDurationExperiment(Experiment):
+
+    def __init__(self):
+        super().__init__()
+        self.alive_durations: List[Life] = []
+
+    def addRecord(self, born: int, dead: int, length: int):
+        self.alive_durations.append(Life(born, dead, length))
+
+    def process(self):
+        return [(d.dead - d.born, d.length) for d in self.alive_durations]

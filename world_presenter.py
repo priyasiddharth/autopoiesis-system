@@ -12,8 +12,7 @@ import world_viewer as viewer
 
 class WorldPresenter(object):
 
-    def __init__(self, viewer: viewer.WorldViewer, context: world.WorldContext,
-                 experiment: helper.Experiment):
+    def __init__(self, viewer: viewer.WorldViewer, context: world.WorldContext):
         self._ctx = context
         self._viewer = viewer
         self._iter = 0
@@ -25,10 +24,6 @@ class WorldPresenter(object):
         self._cycle_observer: world.CycleObserver = self._ctx.cycle_observer
         self._grid: Dict[world.Point: world.T] = self._ctx.grid
         self._iter: int = self._ctx.max_iter
-        self._born_iter = 0
-        self._cycle_maintained = False
-        self._cycle_length = 0
-        self._experiment: helper.Experiment = experiment
 
     def _doSingleStep(self):
         self._hole_process.doStep()
@@ -37,39 +32,28 @@ class WorldPresenter(object):
         self._prod_process.doStep()
         self._disintegrate_process.doStep()
 
-    def postProcessAndContinue(self, iteration: int) -> bool:
-        cycle_found, cycle_broken, cycle_length = self._cycle_observer.doStep()
-        if cycle_found and not cycle_broken:
-            if not self._cycle_maintained:
-                self._cycle_maintained = True
-                self._born_iter = iteration
-            # store the latest cycle length before breaking
-            self._cycle_length = cycle_length
-            logging.getLogger('presenter:').info('Cycle found at iteration:{'
-                                                 '0}'.format(iteration))
-        elif cycle_found and cycle_broken:
-            self._cycle_maintained = False
-            self._experiment.addRecord(self._born_iter, iteration,
-                                       self._cycle_length)
-            logging.getLogger('presenter:').info('Cycle broke at iteration:{'
-                                                 '0}'.format(iteration))
-            return False
-        return True
+    def postProcess(self):
+        pass
 
     def doSimulate(self):
         self._viewer.updateView(self._grid, iteration=0)
         for i in range(self._iter):
             self._doSingleStep()
             self._viewer.updateView(self._grid, i)
-            self.postProcessAndContinue(i)
+            self.postProcess()
 
 
 class ConsolePresenter(WorldPresenter):
 
     def __init__(self, viewer: viewer.ConsoleViewer, config: helper.Config,
-                 exp: helper.Experiment
+                 exp: world.Experiment
                  ) -> None:
-        super().__init__(viewer, config, exp)
+        super().__init__(viewer, config)
+        self._experiment = exp
+
+    def postProcess(self):
+        self._cycle_observer.doStep(self._experiment)
+        self._experiment.incTime()
 
 
 def batch_run():
@@ -77,21 +61,22 @@ def batch_run():
     grid_size = 10
     iter = 100
     view = viewer.NullViewer()
-    grid_seeds = range(0, 10)
-    proc_seeds = range(100, 110)
-    disint_prbs = [0.1]
+    grid_seeds = range(0, 5)
+    proc_seeds = range(100, 105)
+    disint_prbs = [x / 100 for x in range(2, 12, 2)]
     # H S K
-    weights_list = [[9 + i, 90 - i, 1] for i in range(0, 90, 5)]
+    # weights_list = [[9 + int(i/2), 90 - i, 1 + int(i/2)] for i in range(0, 45, 5)]
+    weights_list = [[9, 90, 1]]
     result = {}
     factory = world.WorldFactory()
     for grid_seed, proc_seed, disint_prb, weights in itertools.product(grid_seeds, proc_seeds, disint_prbs,
                                                                        weights_list):
-        exp = helper.AliveDurationExperiment()
+        exp = world.AliveDurationExperiment()
         ctx: world.WorldContext = factory.createRandomWorld(grid_size, weights, grid_random_seed=grid_seed,
                                                             max_iter=iter,
                                                             proc_random_seed=proc_seed,
                                                             disintegrate_prob=disint_prb)
-        wp = WorldPresenter(view, ctx, exp)
+        wp = ConsolePresenter(view, ctx, exp)
         wp.doSimulate()
         result[(grid_seed, proc_seed, disint_prb, tuple(weights))] = exp.process() if exp.process() else [[0, 0]]
 
@@ -113,7 +98,7 @@ def main():
     logging.basicConfig(level=os.environ.get("LOGLEVEL", "DEBUG"))
     path = 'config.json'
     view = viewer.ConsoleViewer()
-    exp = helper.AliveDurationExperiment()
+    exp = world.AliveDurationExperiment()
     config: helper.Config = helper.Config.loadConfigFromFile(path)
     presenter = ConsolePresenter(view, config, exp)
     presenter.doSimulate()

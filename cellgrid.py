@@ -2,6 +2,7 @@ import math
 import time
 from tkinter import *
 
+import helper
 import world_model as world
 import world_presenter as presenter
 import world_viewer as viewer
@@ -13,6 +14,12 @@ class Cell():
     EMPTY_COLOR_BG = "white"
     FILLED_COLOR_BORDER = "green"
     EMPTY_COLOR_BORDER = "black"
+
+    LINK_FREE = 'red'
+    LINK_SINGLE = 'yellow'
+    LINK_DOUBLE = 'orange'
+    SUBSTRATE = 'green'
+    CATALYST = 'pink'
 
     def __init__(self, master, x, y, size):
         """ Constructor of the object called by Cell(...) """
@@ -60,21 +67,26 @@ class Cell():
             xmid = int((xmin + xmax) / 2)
             ymid = int((ymin + ymax) / 2)
 
-            self.master.create_rectangle(xmin, ymin, xmax, ymax, fill=fill, outline=outline)
             ch = ''
             if isinstance(element, world.Hole):
                 ch = 'H'
             elif isinstance(element, world.Substrate):
+                fill = Cell.SUBSTRATE
                 ch = 'S'
             elif isinstance(element, world.Link):
+                fill = Cell.LINK_FREE
                 if element.isFree():
                     ch = 'L'
                 elif element.isSinglyBonded():
+                    fill = Cell.LINK_SINGLE
                     ch = 'b'
                 else:
+                    fill = Cell.LINK_DOUBLE
                     ch = 'B'
             elif isinstance(element, world.Catalyst):
+                fill = Cell.CATALYST
                 ch = 'K'
+            self.master.create_rectangle(xmin, ymin, xmax, ymax, fill=fill, outline=outline)
             self.master.create_text(xmid, ymid, text=ch)
 
 class CellGrid(Canvas):
@@ -156,8 +168,8 @@ class CellGridViewer(viewer.WorldViewer):
 
 class CellGridPresenter(presenter.WorldPresenter):
 
-    def __init__(self, viewer: viewer.WorldViewer):
-        super().__init__(viewer)
+    def __init__(self, viewer: viewer.WorldViewer, ctx: world.WorldContext):
+        super().__init__(viewer, ctx)
 
     def _doSingleStep(self):
         r = super()._doSingleStep()
@@ -168,8 +180,8 @@ class CellGridPresenter(presenter.WorldPresenter):
 def main():
     path = 'config.json'
     view = CellGridViewer()
-    presenter = CellGridPresenter(view)
-    presenter.loadConfigFromFile(path)
+    ctx = world.WorldFactory().createWorld(helper.Config.loadConfigFromFile(path))
+    presenter = CellGridPresenter(view, ctx)
     presenter.doSimulate()
 
 
