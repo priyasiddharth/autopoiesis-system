@@ -1,3 +1,8 @@
+"""World model.
+
+This contains the definition of basic constructs like Elements and then uses
+Processes to work on those Elements.
+"""
 import collections
 import itertools
 import logging
@@ -801,8 +806,8 @@ class ChooseRandomStrategy(ChooseStrategy):
 
 class WorldFactory(object):
 
-    def __int__(self):
-        pass
+    def __init__(self, logging_level='WARNING'):
+        self.logging_level = logging_level
 
     def createRandomGrid(self, grid_size: int, random_seed: int = 0, weights: [int] = [9, 90, 1]) -> Dict[Point, T]:
         # this grid will not have L starting out
@@ -879,7 +884,7 @@ class WorldFactory(object):
                                                disintegration_prob=
                                                disintegration_prob)
         logger = logging.getLogger('world')
-        logger.setLevel('WARNING')
+        logger.setLevel(self.logging_level)
         (hh, ss, kk, ll) = self.getListsFromGrid(grid)
         hp = HoleProcess(grid, hh, ss, kk, ll, choose_strategy, logger)
         lp = LinkProcess(grid, hh, ss, kk, ll, choose_strategy, logger)

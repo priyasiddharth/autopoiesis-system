@@ -1,5 +1,9 @@
+"""Presentation logic + experiment running.
+
+"""
 import itertools
 import logging
+import multiprocessing
 import os
 import pickle
 import statistics
@@ -8,6 +12,12 @@ from typing import Dict
 import helper
 import world_model as world
 import world_viewer as viewer
+
+NUM_ITERATIONS = 1000
+
+GRID_SIZE = 10
+
+NUM_PROCESS = 20
 
 
 class WorldPresenter(object):
@@ -36,11 +46,11 @@ class WorldPresenter(object):
         pass
 
     def doSimulate(self):
-        self._viewer.updateView(self._grid, iteration=0)
         for i in range(self._iter):
-            self._doSingleStep()
             self._viewer.updateView(self._grid, i)
+            self._doSingleStep()
             self.postProcess()
+        self._viewer.updateView(self._grid, i + 1)
 
 
 class ConsolePresenter(WorldPresenter):
@@ -58,27 +68,26 @@ class ConsolePresenter(WorldPresenter):
 
 def batch_run():
     logging.basicConfig(level=os.environ.get("LOGLEVEL", "WARNING"))
-    grid_size = 10
-    iter = 100
-    view = viewer.NullViewer()
+    jobs = []
     grid_seeds = range(0, 5)
     proc_seeds = range(100, 105)
     disint_prbs = [x / 100 for x in range(2, 12, 2)]
     # H S K
-    # weights_list = [[9 + int(i/2), 90 - i, 1 + int(i/2)] for i in range(0, 45, 5)]
-    weights_list = [[9, 90, 1]]
-    result = {}
-    factory = world.WorldFactory()
-    for grid_seed, proc_seed, disint_prb, weights in itertools.product(grid_seeds, proc_seeds, disint_prbs,
-                                                                       weights_list):
-        exp = world.AliveDurationExperiment()
-        ctx: world.WorldContext = factory.createRandomWorld(grid_size, weights, grid_random_seed=grid_seed,
-                                                            max_iter=iter,
-                                                            proc_random_seed=proc_seed,
-                                                            disintegrate_prob=disint_prb)
-        wp = ConsolePresenter(view, ctx, exp)
-        wp.doSimulate()
-        result[(grid_seed, proc_seed, disint_prb, tuple(weights))] = exp.process() if exp.process() else [[0, 0]]
+    weights_list = [[9 + int(i / 2), 90 - i, 1 + int(i / 2)] for i in range(0, 45, 5)]
+    result = multiprocessing.Manager().dict()
+    params_iter = [i for i in itertools.product(grid_seeds, proc_seeds, disint_prbs, weights_list)]
+    jobs_per_proc = int(len(params_iter) / NUM_PROCESS)
+
+    params_split_iter = grouper(params_iter, jobs_per_proc)
+
+    for i, params in enumerate(params_split_iter):
+        p = multiprocessing.Process(target=runSimulOnProcessor, args=(params, result, i))
+        jobs.append(p)
+
+    for job in jobs:
+        job.start()
+    for job in jobs:
+        job.join()
 
     result_dict = {}
     display_dict = {}
@@ -93,6 +102,39 @@ def batch_run():
     print(display_dict)
     with open('outputfile', 'wb') as fout:
         pickle.dump(result_dict, fout)
+
+
+def grouper(iterable, n, fillvalue=None):
+    "Collect data into fixed-length chunks or blocks"
+    # grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx"
+    args = [iter(iterable)] * n
+    return itertools.zip_longest(*args, fillvalue=fillvalue)
+
+
+def runSimulOnProcessor(params, result, i):
+    factory = world.WorldFactory()
+    grid_size = GRID_SIZE
+    iter = NUM_ITERATIONS
+    view = viewer.NullViewer()
+    print('Starting job:', i)
+    # the iterator may iterate over None values so remove those
+    params = [param for param in params if param is not None]
+    for grid_seed, proc_seed, disint_prb, weights in params:
+        exp = runSimulForParam(disint_prb, factory, grid_seed, grid_size, iter, proc_seed, view, weights)
+        result[(grid_seed, proc_seed, disint_prb, tuple(weights))] = exp.process() if exp.process() else [[0, 0]]
+    print('Stopping job:', i)
+
+
+def runSimulForParam(disint_prb, factory, grid_seed, grid_size, iter, proc_seed, view, weights):
+    exp = world.AliveDurationExperiment()
+    ctx: world.WorldContext = factory.createRandomWorld(grid_size, weights, grid_random_seed=grid_seed,
+                                                        max_iter=iter,
+                                                        proc_random_seed=proc_seed,
+                                                        disintegrate_prob=disint_prb)
+    wp = ConsolePresenter(view, ctx, exp)
+    wp.doSimulate()
+    return exp
+
 
 def main():
     logging.basicConfig(level=os.environ.get("LOGLEVEL", "DEBUG"))

@@ -1,3 +1,6 @@
+"""
+Unit/integration tests for the world model.
+"""
 import os
 from unittest import TestCase
 

@@ -1,3 +1,8 @@
+"""
+This is a GUI viewer for Autopoiesis. It uses code grid construction logic from
+https://stackoverflow.com/questions/30023763/how-to-make-an-interactive-2d-grid-in-a-window-in-python
+
+"""
 import math
 import time
 from tkinter import *
@@ -8,7 +13,6 @@ import world_presenter as presenter
 import world_viewer as viewer
 
 
-# https://stackoverflow.com/questions/30023763/how-to-make-an-interactive-2d-grid-in-a-window-in-python
 class Cell():
     FILLED_COLOR_BG = "green"
     EMPTY_COLOR_BG = "white"
@@ -178,6 +182,7 @@ class CellGridPresenter(presenter.WorldPresenter):
 
 
 def main():
+    # The initial parameters are in the json file
     path = 'config.json'
     view = CellGridViewer()
     ctx = world.WorldFactory().createWorld(helper.Config.loadConfigFromFile(path))
