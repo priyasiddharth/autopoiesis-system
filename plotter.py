@@ -33,27 +33,10 @@ def loadData(f: str):
     duration_data_list = []
     labels = []
     weight = [*result][0][1]
-    # for weight in sorted(weights, key=lambda x: x[0]):
-    #    # 0 contains duration data
-    #    duration_data_list.append([r for r in result[prob, weight][1] if r is not 0])
-    #    labels.append(weight)
     for prob in sorted(probs):
         duration_data_list.append([r for r in result[prob, weight][0] if r is not 0])
         labels.append(prob)
     return result, probs, weights
-    # TODO: check if dict empty
-    # prob
-    # probs = [k[0] for k in result.keys()]
-    # # weights
-    # weights = [k[1] for k in result.keys()]
-    # prob_arr = numpy.asarray(probs)
-    # holes_arr = numpy.asarray([i[0] for i in weights])
-    # duration_array = numpy.empty(shape=(1, 0))
-    # for p, k in zip(probs, weights):
-    #     durations, sizes = result[p, k]
-    #     d = statistics.mean(durations)
-    #     duration_array = numpy.append(duration_array, d)
-    # return prob_arr, holes_arr, duration_array
 
 
 def plotAgainstProb(result, probs, weights):
@@ -95,9 +78,7 @@ def doPlot(data_list, labels, title, xlabel, ylabel, path):
     matplotlib.use('agg')
     plt.boxplot(data_list, labels=[' ' for l in labels], showfliers=False)
     plt.title(title)
-    # plt.xlabel(xlabel)
     plt.ylabel(ylabel)
-    # plt.scatter(prob_arr, holes_arr, s=duration_normalized, c=colors, alpha=0.5)
     avgs = ['{:.2f}'.format(stat.mean(r)) for r in data_list]
     std_dev = ['{:.2f}'.format(stat.stdev(r)) for r in data_list]
     plt.table(cellText=[avgs, std_dev], loc='bottom', colLabels=labels, rowLabels=['Mean', 'Std. Dev.'])
