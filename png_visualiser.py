@@ -1,3 +1,20 @@
+"""
+Copyright 2020 Siddharth Priya
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
 import itertools
 import logging
 import math
@@ -50,7 +67,7 @@ def draw_line(image: Image, draw: ImageDraw, pstart: world.Point, pend: world.Po
     y0 = step_size * pstart.y + int(step_size / 2)
     x1 = step_size * pend.x + int(step_size / 2)
     y1 = step_size * pend.y + int(step_size / 2)
-    draw.line(((x0, y0), (x1, y1)), fill='orange', width=1)
+    draw.line(((x0, y0), (x1, y1)), fill='orange', width=2)
 
 
 def draw_on_grid(image: Image, grid: [world.Point, world.T], grid_size: int):

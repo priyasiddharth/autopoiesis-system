@@ -1,4 +1,21 @@
 """
+Copyright 2020 Siddharth Priya
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
+"""
 This is a GUI viewer for Autopoiesis. It uses code grid construction logic from
 https://stackoverflow.com/questions/30023763/how-to-make-an-interactive-2d-grid-in-a-window-in-python
 
@@ -108,15 +125,6 @@ class CellGrid(Canvas):
 
             self.grid.append(line)
 
-        # memorize the cells that have been modified to avoid many switching of state during mouse motion.
-        self.switched = []
-
-        # bind click action
-        self.bind("<Button-1>", self.handleMouseClick)
-        # bind moving while clicking
-        self.bind("<B1-Motion>", self.handleMouseMotion)
-        # bind release button action - clear the memory of midified cells.
-        self.bind("<ButtonRelease-1>", lambda event: self.switched.clear())
 
         self.draw()
 
@@ -129,23 +137,6 @@ class CellGrid(Canvas):
         row = int(event.y / self.cellSize)
         column = int(event.x / self.cellSize)
         return row, column
-
-    def handleMouseClick(self, event):
-        row, column = self._eventCoords(event)
-        cell = self.grid[row][column]
-        cell._switch()
-        cell.draw()
-        # add the cell to the list of cell switched during the click
-        self.switched.append(cell)
-
-    def handleMouseMotion(self, event):
-        row, column = self._eventCoords(event)
-        cell = self.grid[row][column]
-
-        if cell not in self.switched:
-            cell._switch()
-            cell.draw()
-            self.switched.append(cell)
 
     def updateCells(self, sim_grid: [world.Point, world.T]):
         size = int(math.sqrt(len(sim_grid)))
