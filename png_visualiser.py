@@ -28,7 +28,7 @@ import world_presenter as presenter
 import world_viewer as viewer
 
 OUT_DIR = './simulation_images'
-GRID_SIZE = 20
+GRID_SIZE = 50
 HEIGHT = 600
 WIDTH = HEIGHT
 
@@ -101,7 +101,7 @@ def draw_on_grid(image: Image, grid: [world.Point, world.T], grid_size: int):
                     draw_line(image, draw, pstart=grid_element.point, pend=friend.point, grid_size=grid_size, style=150)
             elif isinstance(grid_element, world.Catalyst):
                 p = 'K'
-            draw.text((xmid, ymid), p, font=font, fill='black')
+            # draw.text((xmid, ymid), p, font=font, fill='black')
 
             grid_y += 1
         grid_x += 1
