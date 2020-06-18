@@ -219,7 +219,6 @@ class Catalyst(Element):
         super().__init__(p, n)
 
     def canDisplace(self, o):
-        # TODO: Consider bonded links cannot be broken
         if isinstance(o, (Hole, Substrate, Link)):
             return True
         else:
